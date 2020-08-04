@@ -8,73 +8,6 @@ from mesa.datacollection import DataCollector
 
 import brfss
 
-scbrfss = brfss.bfs_data('./brfss/SCBRFSS.csv')
-
-
-class default_mtd():
-    
-    def __init__(self, race, income):
-        self.race = race
-        self.income = income
-        self.prop_ri = {
-            ace: scbrfss.get_prop(race, income, ace)[0] 
-               for ace in brfss.ace_list.values()
-        }
-    
-    def step_mtd(self, cdn):
-#         ace = list(brfss.ace_list.values())[cdn.index]
-        ace = random.choice(list(cdn.aces.keys()))
-        p_aces = cdn.model.random.random()
-        if p_aces < self.prop_ri[ace]:
-            cdn.aces[ace] = 1
-        else:
-            cdn.aces[ace] = 0
-#         cdn.index = (cdn.index + 1) % len(cdn.aces)
-
-        
-class corr_rand_mtd(default_mtd):
-    
-    def __init__(self, race, income):
-        super().__init__(race, income)
-        self.corr_mat = scbrfss.get_corr_mat(race, income)
-        self.corr_index = {self.corr_mat.index[x]:x 
-                           for x in 
-                          range(len(self.corr_mat.index))}
-        self.corr_columns = {self.corr_mat.columns[x]:x 
-                           for x in 
-                          range(len(self.corr_mat.columns))}
-        self.corr_mat = self.corr_mat.to_numpy()
-        
-    def step_mtd(self, cdn):
-        
-        ace = random.choice(list(cdn.aces.keys()))
-        
-#         rel_aces = [k for k,v in cdn.aces.items() if v == 1]
-        rel_aces = cdn.aces.items()
-        p_aces = cdn.model.random.random()
-        if p_aces < self.cal_prop(ace, rel_aces):
-            cdn.aces[ace] = 1
-        else:
-            cdn.aces[ace] = 0
-            
-    def cal_prop(self, ace, rel_aces = None):
-        if rel_aces == None or len(rel_aces) == 0:
-            return self.prop_ri[ace]
-        corrs = 0
-        index = self.corr_index[ace]
-        for k,v in rel_aces:
-            if k == ace:
-                break
-            cr = self.corr_mat[index, self.corr_columns[k]]
-            if v == 0:
-                corrs -= cr
-            else:
-                corrs += cr
-#         return self.prop_ri[ace] * (1 + corrs/len(rel_aces))
-        return self.prop_ri[ace]  + corrs/len(rel_aces)
-            
-        
-
 class Children(Agent):
     
     def __init__(self, chd_info, model, 
@@ -107,7 +40,7 @@ class AceModel(Model):
                  race, income, step_method):
         self.num_agents = len(chd_data)
         self.schedule = RandomActivation(self)
-        self.step_method = step_method(race, income)
+        self.step_method = step_method(race, income, chd_data)
         
         if not race == 0:
             chd_data = chd_data[(chd_data['_RACE_G1']) == race]
@@ -133,4 +66,37 @@ class AceModel(Model):
         self.reset_randomizer()
         self.schedule.step()
         self.datacollector.collect(self)
-        
+
+
+def simulate_stack(mtd, cdl_data, step_num = 1000, display = False):
+
+    acemodel_list = [
+        AceModel(cdl_data[
+            (cdl_data[['_RACE_G1', '_INCOMG']] == [r,i]).all(axis = 1)
+        ], r, i, step_method = mtd)
+        for r in list(brfss.race_list.keys())[1:]
+        for i in list(brfss.income_list.keys())[1:]
+                    ]
+    
+    for i in range(step_num):
+        [acemodel.step() for acemodel in acemodel_list]
+
+    result = [res for res in [
+            acemodel.datacollector.model_vars['Output'][-1]
+            for acemodel in acemodel_list]
+                if len(res) > 0
+            ]
+    
+    result_df = pd.concat(result, axis = 0, 
+                          ignore_index = True)
+    
+    if not display:
+        return result_df
+    
+    result_bfs = bfs_data(result_df)
+    
+    for r in list(brfss.race_list.keys())[1:]:
+        for i in list(brfss.income_list.keys())[1:]:
+            print('RACE: ' + str(brfss.race_list[r]) + ' INCOME: ' + str(brfss.income_list[i]))
+            display(result_bfs.get_corr_mat(r,i))
+    return result_df

@@ -106,10 +106,16 @@ class bfs_data:
         self.prop_mat = {r:{i: None for i in income_list.keys()} 
                          for r in race_list.keys()}
         
-    def get_value(self, keys):
-        return self.df[keys]
-    
-    
+    def get_value(self, race, income, keys = []):
+        ri_values = self.df[['_RACE_G1', '_INCOMG'] + list(keys)]
+        
+        if not race == 0:
+            ri_values = ri_values[(ri_values['_RACE_G1']) == race]
+            
+        if not income == 0:
+            ri_values = ri_values[(ri_values['_INCOMG']) == income]
+        return ri_values
+        
     def get_prop(self, race, income, *keys):
         
         if race not in race_list.keys() or \
