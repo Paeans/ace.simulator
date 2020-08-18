@@ -34,7 +34,7 @@ def cdn_data(data_pre, age = 18):
     phdata = pd.merge(pdata, hdata, 
                       left_on=['sp_hh_id'], 
                       right_on = ['sp_id'])
-    phdata = phdata[phdata['age'] < 18]
+    phdata = phdata[phdata['age'] >= age]
     phdata['_RACE_G1'] = phdata['race'].apply(
         lambda x: race_spew_to_brfss[x] if x in race_spew_to_brfss else 4)
     phdata['_INCOMG'] = phdata['hh_income'].apply(cat_income)

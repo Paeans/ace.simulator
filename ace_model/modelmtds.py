@@ -1,5 +1,6 @@
 import brfss
 
+import numpy as np
 from sklearn.utils import resample
 
 scbrfss = brfss.bfs_data('./brfss/SCBRFSS.csv')
@@ -16,14 +17,12 @@ class default_mtd():
         }
     
     def step_mtd(self, cdn):
-#         ace = list(brfss.ace_list.values())[cdn.index]
         ace = random.choice(list(cdn.aces.keys()))
         p_aces = cdn.model.random.random()
         if p_aces < self.prop_ri[ace]:
             cdn.aces[ace] = 1
         else:
             cdn.aces[ace] = 0
-#         cdn.index = (cdn.index + 1) % len(cdn.aces)
 
         
 class corr_rand_mtd(default_mtd):
@@ -80,7 +79,7 @@ class bootstrap_mtd(default_mtd):
     def step_mtd(self, cdn):
         ace_keys = list(cdn.aces.keys())
         if self.index >= self.resampled.shape[0]:
-            print('index out of children size, resample')
+            print('index large than children size, resample')
             self.resampled = resample(self.samples, n_samples = len(cdn_group))
             self.index = 0
             
@@ -88,3 +87,73 @@ class bootstrap_mtd(default_mtd):
             cdn.aces[ace_keys[i]] = self.resampled[self.index, i]
         
         self.index += 1
+        
+class bootstrap_mtd_nonan(bootstrap_mtd):
+    
+    def __init__(self, race, income, cdn_group):
+        super().__init__(race, income, cdn_group)
+        
+        self.samples = self.samples[~np.isnan(self.samples).any(axis = 1)]
+        self.resampled = resample(self.samples, n_samples = len(cdn_group))
+        self.index = 0
+        
+class bootstrap_mtd_ptnan(bootstrap_mtd):
+    
+    def __init__(self, race, income, cdn_group):
+        super().__init__(race, income, cdn_group)
+        
+        self.samples = self.samples[~np.isnan(self.samples).all(axis = 1)]
+        self.resampled = resample(self.samples, n_samples = len(cdn_group))
+        self.index = 0
+        
+        
+class bootstrap_mtd_fill(default_mtd):
+    
+    def __init__(self, race, income, cdn_group, file_num = 1):
+        super().__init__(race, income, cdn_group)
+        
+        self.samples = self.fill_nan(race, income, file_num)
+        self.resampled = resample(self.samples, n_samples = len(cdn_group))
+        self.index = 0
+        
+    def step_mtd(self, cdn):
+        ace_keys = list(cdn.aces.keys())
+        if self.index >= self.resampled.shape[0]:
+            print('index large than children size, resample')
+            self.resampled = resample(self.samples, n_samples = len(cdn_group))
+            self.index = 0
+            
+        for i in range(len(ace_keys)):
+            cdn.aces[ace_keys[i]] = self.resampled[self.index, i]
+        
+        self.index += 1
+        
+    def fill_nan(self, race, income, fill_num):
+        ri_values = scbrfss.get_value(race, income, 
+                        list(brfss.ace_list.values())).to_numpy()[:, 2:]        
+#         ri_len = len(ri_values)
+        
+        all_one_values = ri_values[np.isnan(ri_values).sum(axis = 1) <= 1]
+        all_len = 0
+        
+        for i in range(10):
+            all_val = all_one_values[np.isnan(all_one_values).sum(axis = 1) == 0]
+            if len(all_val) == all_len: # and all_len/ri_len > 0.5:
+                break
+                
+#             if len(all_val) == all_len:
+#                 fill_num -= 1
+            
+            all_len = len(all_val)
+            for t in all_one_values:
+                if ~np.isnan(t).any():
+                    continue
+                    
+                similar_val = all_val[(all_val == t).sum(axis = 1) >= fill_num]
+                if len(similar_val) == 0:
+                    continue
+                t[np.argwhere(np.isnan(t))[0][0]] = resample(similar_val[:,np.isnan(t)], n_samples = 1) #random.choice(similar_val[:,np.isnan(t)])
+                
+#         return all_one_values
+        return all_one_values[np.isnan(all_one_values).sum(axis = 1) == 0]
+        
