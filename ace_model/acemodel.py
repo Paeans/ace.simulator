@@ -77,7 +77,7 @@ class HouseHold(Agent):
         if self.steps == 0: # init adults
             [p.step() for p in self.get_adults()]                
             self.steps += 1
-            pass
+            return
         for c in self.get_childs():
             for p in self.get_adults():
                 for ace in p.aces.keys():
