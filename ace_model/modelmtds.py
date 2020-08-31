@@ -1,4 +1,5 @@
 import brfss
+import random
 
 import numpy as np
 from sklearn.utils import resample
