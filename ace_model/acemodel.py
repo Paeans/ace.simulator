@@ -37,7 +37,8 @@ class Children(Agent):
 
 class HouseHold(Agent):
     
-    def __init__(self, house_id, income_code, model, step_method, trans_rate = 0.2, pos = None):
+    def __init__(self, house_id, income_code, model, step_method, 
+                 trans_rate, pos = None):
         unique_id = house_id
         super().__init__(unique_id, model)
         self.trans_rate = trans_rate
@@ -84,12 +85,13 @@ class HouseHold(Agent):
                     if p.aces[ace] == 0 or np.isnan(p.aces[ace]):
                         continue
                     p_trans = self.model.random.random()
-                    if p_trans <= self.trans_rate:
+                    if p_trans <= self.trans_rate[ace]:
                         c.aces[ace] = p.aces[ace]
         self.steps += 1
         
 class HouseModel(Model):
-    def __init__(self, chd_data, race, income, step_method):
+    def __init__(self, chd_data, race, income, step_method, 
+                 trans_rate = {ace:0.2 for ace in brfss.ace_list.values()}):
 
         self.schedule = RandomActivation(self)
         self.step_method = step_method(race, income, chd_data)
@@ -106,7 +108,7 @@ class HouseModel(Model):
             income_code = chd_info['_INCOMG']
             if not house_id in self.schedule._agents.keys():
                 self.schedule.add(
-                    HouseHold(house_id, income_code, self, self.step_method)
+                    HouseHold(house_id, income_code, self, self.step_method, trans_rate = trans_rate)
                 )
             self.schedule._agents[house_id].add_person(chd_info)
             
@@ -165,6 +167,40 @@ def simulate_stack(mtd, cdl_data, model = AceModel, step_num = 1000, display = F
         model(cdl_data[
             (cdl_data[['_RACE_G1', '_INCOMG']] == [r,i]).all(axis = 1)
         ], r, i, step_method = mtd)
+        for r in list(brfss.race_list.keys())[1:]
+        for i in list(brfss.income_list.keys())[1:]
+                    ]
+    
+    for i in range(step_num):
+        [acemodel.step() for acemodel in acemodel_list]
+
+    result = [res for res in [
+            acemodel.datacollector.model_vars['Output'][-1]
+            for acemodel in acemodel_list]
+                if len(res) > 0
+            ]
+    
+    result_df = pd.concat(result, axis = 0, 
+                          ignore_index = True)
+    
+    if not display:
+        return result_df
+    
+    result_bfs = bfs_data(result_df)
+    
+    for r in list(brfss.race_list.keys())[1:]:
+        for i in list(brfss.income_list.keys())[1:]:
+            print('RACE: ' + str(brfss.race_list[r]) + ' INCOME: ' + str(brfss.income_list[i]))
+            display(result_bfs.get_corr_mat(r,i))
+    return result_df
+
+def simulate_trans(mtd, cdl_data, trans_rate = {ace:0.2 for ace in brfss.ace_list.values()}, 
+                   model = HouseModel, step_num = 1000, display = False):
+
+    acemodel_list = [
+        model(cdl_data[
+            (cdl_data[['_RACE_G1', '_INCOMG']] == [r,i]).all(axis = 1)
+        ], r, i, step_method = mtd, trans_rate = trans_rate)
         for r in list(brfss.race_list.keys())[1:]
         for i in list(brfss.income_list.keys())[1:]
                     ]
